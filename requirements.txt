@@ -1,0 +1,6 @@
+streamlit
+pandas
+astral
+zoneinfo
+requests
+numpy
