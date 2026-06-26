@@ -228,67 +228,7 @@ with suggestion_box_container:
             else:
                 st.warning("Please input message content before transmitting.")
 
-st.divider()
 
-st.subheader("🔐 Administrator Panel")
-
-password = st.text_input(
-    "Administrator Password",
-    type="password"
-)
-
-if password == "AeroSky2026":
-
-    suggestions = storage_mod.get_suggestions()
-
-    if len(suggestions) == 0:
-
-        st.info("No suggestions submitted yet.")
-
-    else:
-
-        st.success(f"{len(suggestions)} suggestion(s) stored.")
-
-        search = st.text_input(
-            "Search operator"
-        )
-
-        if search:
-
-            suggestions = suggestions[
-                suggestions["Operator"]
-                .str.contains(search,
-                              case=False,
-                              na=False)
-            ]
-
-        st.dataframe(
-            suggestions,
-            use_container_width=True
-        )
-
-        st.download_button(
-            "📥 Export CSV",
-            suggestions.to_csv(index=False),
-            "Suggestions.csv",
-            "text/csv"
-        )
-
-        st.markdown("### Delete Suggestion")
-
-        suggestion_id = st.number_input(
-            "Suggestion ID",
-            min_value=1,
-            step=1
-        )
-
-        if st.button("Delete"):
-
-            storage_mod.delete_suggestion(suggestion_id)
-
-            st.success("Suggestion deleted.")
-
-            st.rerun()
 
 developer_footer_placeholder.markdown(
     "<hr><p style='text-align: center; color: #6B7280; font-size: 13px; font-weight: 500; letter-spacing: 0.025em;'>"

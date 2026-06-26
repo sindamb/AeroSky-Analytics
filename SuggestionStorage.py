@@ -59,7 +59,7 @@ def get_suggestions():
             operator AS Operator,
             suggestion AS Suggestion
         FROM suggestions
-        ORDER BY id DESC
+        ORDER BY id ASC
     """, conn)
 
     conn.close()
