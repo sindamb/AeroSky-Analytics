@@ -1,8 +1,11 @@
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import os
 
-DATABASE = "aerosky.db"
+# Create an absolute path to the database file relative to this script
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.path.join(BASE_DIR, "aerosky.db")
 
 
 def initialize_database():
@@ -22,6 +25,7 @@ def initialize_database():
     conn.close()
 
 
+# Ensure the database and table exist immediately upon import
 initialize_database()
 
 
@@ -49,7 +53,6 @@ def save_operator_suggestion(operator, suggestion):
 
 
 def get_suggestions():
-
     conn = sqlite3.connect(DATABASE)
 
     df = pd.read_sql_query("""
@@ -68,9 +71,7 @@ def get_suggestions():
 
 
 def delete_suggestion(suggestion_id):
-
     conn = sqlite3.connect(DATABASE)
-
     cursor = conn.cursor()
 
     cursor.execute(
