@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
 import time
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import SuggestionStorage as storage_mod
 
 # Real-time backend engines
 from Weather import fetch_live_only_data
@@ -203,6 +205,8 @@ with details_and_links_container:
         * 🌌 **Astronomy Network**: Developed alongside the [Inzagi Astro Group (IAG)](https://inzagi-astrogroup.vercel.app/)
         """)
 
+
+
 with suggestion_box_container:
     st.markdown('<div class="section-header">📩 System Operator Suggestion Box</div>', unsafe_allow_html=True)
     with st.form("suggestion_box_stable_form", clear_on_submit=True):
@@ -211,11 +215,80 @@ with suggestion_box_container:
         submitted = st.form_submit_button("Transmit your suggestion")
         
         if submitted:
+            # 1. Basic empty message check
             if op_message.strip():
-                st.toast("Feedback transmitted successfully!", icon="💾")
-                st.success("Log stored. Thank you for your feedback input!")
+                # 2. Transmit down to our backend storage pipeline
+                success, response_msg = storage_mod.save_operator_suggestion(op_title, op_message)
+                
+                if success:
+                    st.toast("Feedback transmitted successfully!", icon="💾")
+                    st.success(response_msg)
+                else:
+                    st.error(response_msg)
             else:
                 st.warning("Please input message content before transmitting.")
+
+st.divider()
+
+st.subheader("🔐 Administrator Panel")
+
+password = st.text_input(
+    "Administrator Password",
+    type="password"
+)
+
+if password == "AeroSky2026":
+
+    suggestions = storage_mod.get_suggestions()
+
+    if len(suggestions) == 0:
+
+        st.info("No suggestions submitted yet.")
+
+    else:
+
+        st.success(f"{len(suggestions)} suggestion(s) stored.")
+
+        search = st.text_input(
+            "Search operator"
+        )
+
+        if search:
+
+            suggestions = suggestions[
+                suggestions["Operator"]
+                .str.contains(search,
+                              case=False,
+                              na=False)
+            ]
+
+        st.dataframe(
+            suggestions,
+            use_container_width=True
+        )
+
+        st.download_button(
+            "📥 Export CSV",
+            suggestions.to_csv(index=False),
+            "Suggestions.csv",
+            "text/csv"
+        )
+
+        st.markdown("### Delete Suggestion")
+
+        suggestion_id = st.number_input(
+            "Suggestion ID",
+            min_value=1,
+            step=1
+        )
+
+        if st.button("Delete"):
+
+            storage_mod.delete_suggestion(suggestion_id)
+
+            st.success("Suggestion deleted.")
+
+            st.rerun()
 
 developer_footer_placeholder.markdown(
     "<hr><p style='text-align: center; color: #6B7280; font-size: 13px; font-weight: 500; letter-spacing: 0.025em;'>"
@@ -227,5 +300,4 @@ developer_footer_placeholder.markdown(
 # ==========================================
 # 5. RUN LIVE REFRESH MODULE AT THE ABSOLUTE BOTTOM
 # ==========================================
-# By running the loop here, Streamlit builds the containers first, then spins the live clock!
 run_live_telemetry_loop()
