@@ -1,63 +1,119 @@
 import requests
 import pandas as pd
-from datetime import date
-from astral import LocationInfo
-from astral.sun import sun
+from datetime import datetime, timedelta
 
 def fetch_live_only_data():
     """
-    Queries the live Open-Meteo forecast API for today's real-time parameters only.
+    Fetches weather telemetry for Kigali, Rwanda (1.9441° S, 30.0619° E)
+    from the Open-Meteo API. Enforces a strict timeout to prevent Streamlit freezes.
     """
-    url = (
-        "https://api.open-meteo.com/v1/forecast?"
-        "latitude=-1.9441&longitude=30.0619&"
-        "daily=temperature_2m_max,temperature_2m_min,precipitation_sum,"
-        "wind_speed_10m_max,wind_direction_10m_dominant,relative_humidity_2m_mean,"
-        "surface_pressure_mean,cloud_cover_mean,visibility_mean&"
-        "timezone=auto&forecast_days=1"
-    )
+    # Coordinates for Kigali, Rwanda
+    LATITUDE = -1.9441
+    LONGITUDE = 30.0619
     
-    response = requests.get(url).json()
-    if "daily" not in response:
-        raise RuntimeError("Open-Meteo live feed down or timed out.")
-        
-    daily = response["daily"]
-    today = date.today()
+    # Define time window (e.g., past 3 days up to today for historical context)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=3)
     
-    # Live Astronomy logic
-    city = LocationInfo("Kigali", "Rwanda", "Africa/Kigali", -1.9441, 30.0619)
-    try:
-        s = sun(city.observer, date=today)
-        sunrise_time = s["sunrise"].strftime("%H:%M")
-        sunset_time = s["sunset"].strftime("%H:%M")
-    except Exception:
-        sunrise_time = "06:00"
-        sunset_time = "18:00"
-        
-    diff = today - date(2001, 1, 1)
-    days = diff.days % 29.53
-    if days < 1: moon_p = "New Moon"
-    elif days < 7: moon_p = "Waxing Crescent"
-    elif days == 7: moon_p = "First Quarter"
-    elif days < 14: moon_p = "Waxing Gibbous"
-    elif days == 14: moon_p = "Full Moon"
-    elif days < 22: moon_p = "Waning Gibbous"
-    else: moon_p = "Last Quarter"
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = end_date.strftime("%Y-%m-%d")
     
-    live_data = {
-        "date": [pd.to_datetime(today)],
-        "temperature_2m_max": [daily["temperature_2m_max"][0]],
-        "temperature_2m_min": [daily["temperature_2m_min"][0]],
-        "precipitation_sum": [daily["precipitation_sum"][0]],
-        "wind_speed_10m_max": [daily["wind_speed_10m_max"][0]],
-        "wind_direction_10m_dominant": [daily["wind_direction_10m_dominant"][0]],
-        "relative_humidity_2m_mean": [daily["relative_humidity_2m_mean"][0]],
-        "surface_pressure_mean": [daily["surface_pressure_mean"][0]],
-        "cloud_cover_mean": [daily["cloud_cover_mean"][0]],
-        "visibility_mean": [daily["visibility_mean"][0] if daily["visibility_mean"][0] is not None else 0.0],
-        "moon_phase": [moon_p],
-        "sunrise": [sunrise_time],
-        "sunset": [sunset_time]
+    # Open-Meteo API URL with all necessary parameters required by AeroSky Analytics
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": LATITUDE,
+        "longitude": LONGITUDE,
+        "start_date": start_str,
+        "end_date": end_str,
+        "daily": [
+            "temperature_2m_max",
+            "temperature_2m_min",
+            "precipitation_sum",
+            "wind_speed_10m_max",
+            "sunrise",
+            "sunset"
+        ],
+        "hourly": [
+            "relative_humidity_2m",
+            "surface_pressure",
+            "cloud_cover",
+            "visibility"
+        ],
+        "timezone": "Africa/Kigali"
     }
     
-    return pd.DataFrame(live_data)
+    try:
+        # Enforce a strict 5-second timeout so the app fails gracefully if the API is slow or down
+        response = requests.get(url, params=params, timeout=5)
+        response.raise_for_status() # Raise an error for bad status codes (44, 500, etc.)
+        data = response.json()
+        
+        # -------------------------------------------------------------
+        # PARSE HOURLY DATA (Aggregate hourly metrics into daily means)
+        # -------------------------------------------------------------
+        hourly = data.get("hourly", {})
+        df_hourly = pd.DataFrame({
+            "time": pd.to_datetime(hourly.get("time")),
+            "relative_humidity_2m": hourly.get("relative_humidity_2m"),
+            "surface_pressure": hourly.get("surface_pressure"),
+            "cloud_cover": hourly.get("cloud_cover"),
+            "visibility": hourly.get("visibility")
+        })
+        
+        # Group by date to match the daily framework row structure
+        df_hourly["date"] = df_hourly["time"].dt.strftime("%Y-%m-%d")
+        daily_averages = df_hourly.groupby("date").agg({
+            "relative_humidity_2m": "mean",
+            "surface_pressure": "mean",
+            "cloud_cover": "mean",
+            "visibility": "mean"
+        }).reset_index()
+        
+        # -------------------------------------------------------------
+        # PARSE DAILY DATA
+        # -------------------------------------------------------------
+        daily = data.get("daily", {})
+        df_daily = pd.DataFrame({
+            "date": daily.get("time"),
+            "temperature_2m_max": daily.get("temperature_2m_max"),
+            "temperature_2m_min": daily.get("temperature_2m_min"),
+            "precipitation_sum": daily.get("precipitation_sum"),
+            "wind_speed_10m_max": daily.get("wind_speed_10m_max"),
+            "sunrise": [t.split("T")[-1] if "T" in t else t for t in daily.get("sunrise", [])],
+            "sunset": [t.split("T")[-1] if "T" in t else t for t in daily.get("sunset", [])]
+        })
+        
+        # -------------------------------------------------------------
+        # MERGE DATA & CALCULATE MOCK MOON PHASE FOR THE REGISTRY
+        # -------------------------------------------------------------
+        final_df = pd.merge(df_daily, daily_averages, on="date")
+        
+        # Clean column names to match what app.py expects
+        final_df = final_df.rename(columns={
+            "relative_humidity_2m": "relative_humidity_2m_mean",
+            "surface_pressure": "surface_pressure_mean",
+            "cloud_cover": "cloud_cover_mean",
+            "visibility": "visibility_mean"
+        })
+        
+        # Mock a moon phase value if not provided by core API payload (required by app.py)
+        final_df["moon_phase"] = "Waxing Gibbous"
+        
+        return final_df
+
+    except requests.exceptions.Timeout:
+        raise RuntimeError("The connection to the weather telemetry API timed out. Please retry.")
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Network error interface dropped: {e}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to process telemetry payload structure: {e}")
+
+# Simple standalone validation test
+if __name__ == "__main__":
+    print("Testing Kigali telemetry fetch...")
+    try:
+        test_df = fetch_live_only_data()
+        print("\nSuccess! Sample Data Frame Constructed:")
+        print(test_df.tail(1).to_string())
+    except Exception as error:
+        print(f"\nTest Failed: {error}")
