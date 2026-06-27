@@ -64,33 +64,31 @@ st.markdown("""
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
+# Fetch the global administrative override status
+if storage_mod:
+    global_use_mock = storage_mod.get_global_mock_status()
+else:
+    global_use_mock = not BACKEND_AVAILABLE
+
 # ==========================================
-# 2. SIDEBAR NAVIGATION & DATA TOGGLE
+# 2. SIDEBAR NAVIGATION
 # ==========================================
 st.sidebar.title("Navigation")
 app_mode = st.sidebar.radio("Go to", ["Live Telemetry Dashboard", "Admin Login"])
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Data Stream Controls")
-use_mock_data = st.sidebar.checkbox("Force Safe Mock Data (Bypass API)", value=not BACKEND_AVAILABLE)
-
-if st.sidebar.button("Clear App Cache & Reload"):
-    st.cache_data.clear()
-    st.rerun()
 
 if st.session_state.authenticated and st.sidebar.button("Log Out"):
     st.session_state.authenticated = False
     st.rerun()
 
 # ==========================================
-# 3. ADMIN PANEL VIEW
+# 3. ADMIN PANEL VIEW (Controls Hidden Here Now)
 # ==========================================
 if app_mode == "Admin Login" or st.session_state.authenticated:
     if not st.session_state.authenticated:
         st.title("🔐 AeroSky Administrator Dashboard")
         st.subheader("Login Required")
         
-        ADMIN_PASSWORD = "@inzagi"  
+        ADMIN_PASSWORD = "sylvere"  
         password = st.text_input("Enter Admin Password", type="password")
         
         if st.button("Login"):
@@ -103,30 +101,53 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
         st.stop()
         
     st.title("🔐 AeroSky Administrator Dashboard")
+    
+    # MASTER SYSTEM CONTROLS — IMPACTS EVERYONE GLOBAL
+    st.markdown("---")
+    st.subheader("🛠️ Global Core Infrastructure Controls")
+    
+    if storage_mod:
+        current_status = storage_mod.get_global_mock_status()
+        admin_toggle = st.toggle("Force Safe Mock Data Framework globally (Bypasses API for ALL users)", value=current_status)
+        
+        if admin_toggle != current_status:
+            storage_mod.set_global_mock_status(admin_toggle)
+            st.toast(f"Global configuration modified! Mock Mode: {admin_toggle}", icon="⚙️")
+            time.sleep(0.5)
+            st.rerun()
+    else:
+        st.error("Infrastructure storage module missing. Cannot broadcast global switch.")
+
+    if st.button("Clear App Calculation Cache Globally"):
+        st.cache_data.clear()
+        st.success("Application memory frames cleared completely.")
+    
+    st.markdown("---")
+    
     if storage_mod:
         df_suggestions = storage_mod.get_suggestions()
     else:
         df_suggestions = pd.DataFrame(columns=["ID", "Operator", "Message", "Timestamp"])
         
-    st.success(f"Total suggestions: {len(df_suggestions)}")
+    st.info(f"Total operator logs: {len(df_suggestions)}")
 
-    st.subheader("🔍 Search Suggestions")
-    search = st.text_input("Search by operator name")
+    st.subheader("🔍 Filter Log Registry")
+    search = st.text_input("Search by operator designation")
     if search and not df_suggestions.empty:
         df_suggestions = df_suggestions[df_suggestions["Operator"].str.contains(search, case=False, na=False)]
 
-    st.subheader("📄 All Suggestions")
+    st.subheader("📄 Operational Suggestions Matrix")
     st.dataframe(df_suggestions, use_container_width=True)
 
     if not df_suggestions.empty:
         csv_data = df_suggestions.to_csv(index=False)
-        st.download_button(label="📥 Download CSV", data=csv_data, file_name="aerosky_suggestions.csv", mime="text/csv")
+        st.download_button(label="📥 Download CSV Summary", data=csv_data, file_name="aerosky_suggestions.csv", mime="text/csv")
 
-        st.subheader("🗑 Delete Suggestion")
+        st.subheader("🗑 Evict Registry Entry")
         suggestion_id = st.number_input("Enter Suggestion ID to delete", min_value=1, step=1)
-        if st.button("Delete") and storage_mod:
+        if st.button("Delete Entry") and storage_mod:
             storage_mod.delete_suggestion(int(suggestion_id))
-            st.warning(f"Suggestion {suggestion_id} deleted.")
+            st.warning(f"Suggestion {suggestion_id} cleared.")
             time.sleep(1)
             st.rerun()
 
@@ -182,7 +203,7 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-    # 1. Render Clock
+    # 1. Render Clock Frame
     run_live_clock_header()
 
     # 2. Setup Layout Structural Elements
@@ -197,10 +218,11 @@ else:
         today_row = None
         df = None
 
-        if use_mock_data:
+        # Evaluates the configuration specified by Admin panel
+        if global_use_mock:
             df = generate_fallback_mock_data()
             today_row = df.iloc[-1]
-            st.info("ℹ️ Running on isolated Local Safe Telemetry Data Stream.")
+            st.info("ℹ️ System currently operating on global Administrative Maintenance Mode (Safe Stream).")
         else:
             with st.status("Connecting to Live API Telemetry Stream...", expanded=False) as status:
                 try:
@@ -209,7 +231,7 @@ else:
                     today_row = df.iloc[-1]
                     status.update(label="Live telemetry engine connected successfully!", state="complete")
                 except Exception as e:
-                    status.update(label=f"External connection failed: {e}. Falling back to safe mode.", state="error")
+                    status.update(label=f"External connection failed: {e}. Defaulting to backup matrix stream.", state="error")
                     df = generate_fallback_mock_data()
                     today_row = df.iloc[-1]
 
@@ -222,7 +244,6 @@ else:
             as_status = today_row['Astronomy_Status']
             as_class = "status-optimal" if "Optimal" in as_status else ("status-marginal" if "Marginal" in as_status else "status-suboptimal")
 
-            # Scale and handle visibility gracefully
             raw_vis = float(today_row.get('visibility_mean', 10000.0))
             vis_km = raw_vis / 1000.0 if raw_vis > 150.0 else raw_vis
 
@@ -259,8 +280,6 @@ else:
                 """, unsafe_allow_html=True)
 
             st.markdown('<div class="section-header">🌤️ Live Kigali Environmental Conditions Matrix</div>', unsafe_allow_html=True)
-            
-            # Weighted columns to give longer labels like hPa and sunrise/sunset ample space
             w_col1, w_col2, w_col3, w_col4, w_col5 = st.columns([1, 1, 1.2, 1, 1.2])
             
             with w_col1:
@@ -280,7 +299,6 @@ else:
                 'precipitation_sum', 'wind_speed_10m_max', 'cloud_cover_mean', 'relative_humidity_2m_mean', 'visibility_mean', 'moon_phase'
             ]
             
-            # Format visibility to uniform km within the logs for clean scannability
             df_display = df.copy()
             df_display['visibility_mean'] = df_display['visibility_mean'].apply(lambda x: x / 1000.0 if x > 150.0 else x)
 
