@@ -63,7 +63,6 @@ if "authenticated" not in st.session_state:
 st.sidebar.title("Navigation")
 app_mode = st.sidebar.radio("Go to", ["Live Telemetry Dashboard", "Admin Login"])
 
-# Show a quick log-out option if already authenticated
 if st.session_state.authenticated:
     if st.sidebar.button("Log Out"):
         st.session_state.authenticated = False
@@ -73,7 +72,6 @@ if st.session_state.authenticated:
 # 3. ADMIN PANEL VIEW
 # ==========================================
 if app_mode == "Admin Login" or st.session_state.authenticated:
-    
     if not st.session_state.authenticated:
         st.title("🔐 AeroSky Administrator Dashboard")
         st.subheader("Login Required")
@@ -90,22 +88,18 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
                 st.error("Incorrect password")
         st.stop()
         
-    # Content visible ONLY to you after login
     st.title("🔐 AeroSky Administrator Dashboard")
     df_suggestions = storage_mod.get_suggestions()
     st.success(f"Total suggestions: {len(df_suggestions)}")
 
-    # Search
     st.subheader("🔍 Search Suggestions")
     search = st.text_input("Search by operator name")
     if search:
         df_suggestions = df_suggestions[df_suggestions["Operator"].str.contains(search, case=False, na=False)]
 
-    # Display Data Table
     st.subheader("📄 All Suggestions")
     st.dataframe(df_suggestions, use_container_width=True)
 
-    # Download CSV
     csv_data = df_suggestions.to_csv(index=False)
     st.download_button(
         label="📥 Download CSV",
@@ -114,17 +108,15 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
         mime="text/csv"
     )
 
-    # Delete Section
     st.subheader("🗑 Delete Suggestion")
     if len(df_suggestions) > 0:
         suggestion_id = st.number_input("Enter Suggestion ID to delete", min_value=1, step=1)
         if st.button("Delete"):
             storage_mod.delete_suggestion(int(suggestion_id))
             st.warning(f"Suggestion {suggestion_id} deleted.")
-            time.sleep(1) # Give time for user to see message
+            time.sleep(1)
             st.rerun()
 
-    # Statistics & Trends Charts
     st.subheader("📊 Statistics")
     col1, col2 = st.columns(2)
     with col1:
@@ -145,31 +137,21 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
         ax.set_ylabel("Number of Suggestions")
         st.pyplot(fig)
 
-
 # ==========================================
 # 4. MAIN TELEMETRY DASHBOARD VIEW
 # ==========================================
 else:
-    # Setup placeholders for the live dashboard
-    header_placeholder = st.empty()
-    
-    # FIXED: Swapped these layout objects to st.empty() blocks to prevent multiple accumulation bugs
-    diagnostic_placeholder = st.empty()
-    matrix_placeholder = st.empty()
-    table_placeholder = st.empty()
-
-    details_and_links_container = st.container()
-    suggestion_box_container = st.container()
-    developer_footer_placeholder = st.empty()
-
     @st.cache_data(ttl=60)
     def fetch_and_calculate_live_metrics():
         raw_df = fetch_live_only_data()
         return compute_all_indices(raw_df)
 
-    # Isolated Live Auto-refresh fragment via run_every parameter
+    # ------------------------------------------
+    # FRAGMENT 1: Lightweight Independent Live Clock Header
+    # ------------------------------------------
     @st.fragment(run_every=1.0)
-    def run_live_telemetry_loop():
+    def run_live_clock_header():
+        header_placeholder = st.empty()
         kigali_time = datetime.now(ZoneInfo("Africa/Kigali"))
         formatted_date = kigali_time.strftime('%A, %B %d, %Y')
         formatted_time = kigali_time.strftime('%H:%M:%S (GMT+2)')
@@ -192,12 +174,14 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        if "loop_counter" not in st.session_state:
-            st.session_state.loop_counter = 0
-        st.session_state.loop_counter += 1
-        if st.session_state.loop_counter >= 60:
-            st.session_state.loop_counter = 0
-            st.cache_data.clear()
+    # ------------------------------------------
+    # FRAGMENT 2: Network Telemetry Polling (Every 60 Seconds)
+    # ------------------------------------------
+    @st.fragment(run_every=60.0)
+    def run_live_telemetry_loop():
+        diagnostic_container = st.container()
+        matrix_container = st.container()
+        table_placeholder = st.empty()
 
         try:
             df = fetch_and_calculate_live_metrics()
@@ -206,8 +190,7 @@ else:
             st.error(f"Data engine offline: {e}")
             return
 
-        # FIXED: Wrap dynamic content blocks neatly into an inner container inside the empty placeholder
-        with diagnostic_placeholder.container():
+        with diagnostic_container:
             st.markdown('<div class="section-header">📡 Real-Time Suitability Diagnostics</div>', unsafe_allow_html=True)
             diag_col1, diag_col2 = st.columns(2)
             
@@ -248,8 +231,7 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
-        # FIXED: Clear out and replace the previous execution matrix
-        with matrix_placeholder.container():
+        with matrix_container:
             st.markdown('<div class="section-header">🌤️ Live Kigali Environmental Conditions Matrix</div>', unsafe_allow_html=True)
             w_col1, w_col2, w_col3, w_col4, w_col5 = st.columns(5)
             with w_col1:
@@ -264,8 +246,7 @@ else:
             with w_col5:
                 st.metric(label="Solar Window Range", value=f"🌅 {today_row['sunrise']}", delta=f"🌇 Sunset: {today_row['sunset']}", delta_color="off")
 
-        # FIXED: Clear out and replace the previous data table frame
-        with table_placeholder.container():
+        with table_placeholder:
             st.markdown('<div class="section-header">🔍 Current Frame Log Registry</div>', unsafe_allow_html=True)
             columns_to_show = [
                 'date', 'ASI_Aviation', 'Aviation_Status', 'ASI_Astronomy', 'Astronomy_Status',
@@ -273,7 +254,15 @@ else:
             ]
             st.dataframe(df[columns_to_show], width='stretch', hide_index=True)
 
-    # Static elements stay rock solid here outside the fragment's loop scope
+    # FIXED LAYOUT SEQUENCING: Execute live layout calculations sequentially at the top
+    run_live_clock_header()
+    run_live_telemetry_loop()
+
+    # The form sections and expansion layouts now reside securely back down at the baseline interface scope
+    details_and_links_container = st.container()
+    suggestion_box_container = st.container()
+    developer_footer_placeholder = st.empty()
+
     with details_and_links_container:
         st.markdown("---")
         st.markdown('<div class="section-header">📘 AeroSky Core System Details</div>', unsafe_allow_html=True)
@@ -311,6 +300,3 @@ else:
         "</p>", 
         unsafe_allow_html=True
     )
-
-    # Start the ticking logic safely at the layout floor
-    run_live_telemetry_loop()
