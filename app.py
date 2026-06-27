@@ -200,7 +200,7 @@ else:
         if use_mock_data:
             df = generate_fallback_mock_data()
             today_row = df.iloc[-1]
-            st.info("ℹ— Running on isolated Local Safe Telemetry Data Stream.")
+            st.info("ℹ️ Running on isolated Local Safe Telemetry Data Stream.")
         else:
             with st.status("Connecting to Live API Telemetry Stream...", expanded=False) as status:
                 try:
@@ -222,7 +222,7 @@ else:
             as_status = today_row['Astronomy_Status']
             as_class = "status-optimal" if "Optimal" in as_status else ("status-marginal" if "Marginal" in as_status else "status-suboptimal")
 
-            # Format visibility to KM for structural metric presentation
+            # Scale and handle visibility gracefully
             raw_vis = float(today_row.get('visibility_mean', 10000.0))
             vis_km = raw_vis / 1000.0 if raw_vis > 150.0 else raw_vis
 
@@ -234,10 +234,10 @@ else:
                         <span class="status-badge {av_class}">{av_status}</span>
                     </div>
                     <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{float(today_row['ASI_Aviation']):.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
-                    <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; gap:15px;">
-                        <span>💨 <b>Wind:</b> {float(today_row['wind_speed_10m_max']):.1f} km/h</span>
-                        <span>🌧️ <b>Rain:</b> {float(today_row['precipitation_sum']):.1f} mm</span>
-                        <span>👁️ <b>Range:</b> {vis_km:.1f} km</span>
+                    <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; justify-content:space-between; gap:10px; flex-wrap:nowrap;">
+                        <span style="white-space:nowrap;">💨 <b>Wind:</b> {float(today_row['wind_speed_10m_max']):.1f} km/h</span>
+                        <span style="white-space:nowrap;">🌧️ <b>Rain:</b> {float(today_row['precipitation_sum']):.1f} mm</span>
+                        <span style="white-space:nowrap;">👁️ <b>Range:</b> {vis_km:.1f} km</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -250,22 +250,25 @@ else:
                         <span class="status-badge {as_class}">{as_status}</span>
                     </div>
                     <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{float(today_row['ASI_Astronomy']):.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
-                    <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; gap:12px; justify-content:space-between;">
-                        <span>☁️ <b>Clouds:</b> {float(today_row['cloud_cover_mean']):.1f}%</span>
-                        <span>🌖 <b>Moon:</b> {today_row['moon_phase']}</span>
-                        <span>💧 <b>Humidity:</b> {float(today_row['relative_humidity_2m_mean']):.1f}%</span>
+                    <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; justify-content:space-between; gap:10px; flex-wrap:nowrap;">
+                        <span style="white-space:nowrap;">☁️ <b>Clouds:</b> {float(today_row['cloud_cover_mean']):.1f}%</span>
+                        <span style="white-space:nowrap;">🌖 <b>Moon:</b> {today_row['moon_phase']}</span>
+                        <span style="white-space:nowrap;">💧 <b>Humidity:</b> {float(today_row['relative_humidity_2m_mean']):.1f}%</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
             st.markdown('<div class="section-header">🌤️ Live Kigali Environmental Conditions Matrix</div>', unsafe_allow_html=True)
-            w_col1, w_col2, w_col3, w_col4, w_col5 = st.columns(5)
+            
+            # Weighted columns to give longer labels like hPa and sunrise/sunset ample space
+            w_col1, w_col2, w_col3, w_col4, w_col5 = st.columns([1, 1, 1.2, 1, 1.2])
+            
             with w_col1:
                 st.metric(label="Temperature Profile", value=f"{float(today_row['temperature_2m_max']):.1f} °C", delta=f"Floor: {float(today_row['temperature_2m_min']):.1f} °C", delta_color="inverse")
             with w_col2:
                 st.metric(label="Relative Air Humidity", value=f"{float(today_row['relative_humidity_2m_mean']):.1f}%")
             with w_col3:
-                st.metric(label="Kigali QFE (KIA) ", value=f"{float(today_row['surface_pressure_mean']):.1f} hPa")
+                st.metric(label="Kigali QFE (KIA)", value=f"{float(today_row['surface_pressure_mean']):.1f} hPa")
             with w_col4:
                 st.metric(label="Horizontal Visibility", value=f"{vis_km:.1f} km")
             with w_col5:
@@ -277,7 +280,7 @@ else:
                 'precipitation_sum', 'wind_speed_10m_max', 'cloud_cover_mean', 'relative_humidity_2m_mean', 'visibility_mean', 'moon_phase'
             ]
             
-            # Formats the visibility inside the DataFrame to uniform KM for visual clarity
+            # Format visibility to uniform km within the logs for clean scannability
             df_display = df.copy()
             df_display['visibility_mean'] = df_display['visibility_mean'].apply(lambda x: x / 1000.0 if x > 150.0 else x)
 
@@ -297,7 +300,7 @@ else:
             )
 
     # ------------------------------------------
-    # 4. CORE SYSTEM DETAILS & BACKEND LINKS (Protected)
+    # 4. CORE SYSTEM DETAILS & BACKEND LINKS
     # ------------------------------------------
     with details_section:
         st.markdown("---")
@@ -313,7 +316,7 @@ else:
             """)
 
     # ------------------------------------------
-    # 5. SYSTEM OPERATOR SUGGESTION BOX (Protected)
+    # 5. SYSTEM OPERATOR SUGGESTION BOX
     # ------------------------------------------
     with suggestion_section:
         st.markdown('<div class="section-header">📩 System Operator Suggestion Box</div>', unsafe_allow_html=True)
