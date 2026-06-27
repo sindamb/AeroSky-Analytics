@@ -1,118 +1,45 @@
 import pandas as pd
-import numpy as np
 
 def compute_all_indices(df):
     """
-    Computes aviation and astronomy suitability metrics safely.
-    Guaranteed not to cause infinite loops or block the UI pipeline.
+    Computes system operational feasibility weights for the live tracking dataset,
+    heavily leaning on visibility minimums for aviation and astronomy profiles.
     """
-    # Prevent modifying original DataFrame
-    df = df.copy()
+    # 1. FEATURE SCALING / NORMALIZATION SUB-SCORES
+    df['wind_score'] = df['wind_speed_10m_max'].apply(lambda x: max(0.0, 1.0 - (x / 25.0)))
+    df['rain_score'] = df['precipitation_sum'].apply(lambda x: max(0.0, 1.0 - (x / 20.0)))
+    df['vis_score'] = df['visibility_mean'].apply(lambda x: min(1.0, x / 10000.0))
+    df['cloud_score'] = df['cloud_cover_mean'].apply(lambda x: 1.0 - (x / 100.0))
+    df['humidity_score'] = df['relative_humidity_2m_mean'].apply(lambda x: 1.0 - (x / 100.0))
     
-    # -------------------------------------------------------------
-    # 1. FLIGHT SAFETY SYSTEM (ASI Aviation Calculation)
-    # Base formula drops points for high winds, precipitation, and poor visibility
-    # -------------------------------------------------------------
-    asi_aviation_list = []
-    aviation_status_list = []
+    moon_map = {
+        'New Moon': 1.0, 'Waning Crescent': 0.8, 'Waxing Crescent': 0.8,
+        'First Quarter': 0.5, 'Last Quarter': 0.5, 'Waning Gibbous': 0.2,
+        'Waxing Gibbous': 0.2, 'Full Moon': 0.0
+    }
+    df['moon_score'] = df['moon_phase'].map(moon_map).fillna(0.5)
+
+    # 2. INDEX FORMULA CALCULATIONS (Heavy weight on Visibility)
+    df['ASI_Aviation'] = (df['wind_score'] * 0.40 + df['rain_score'] * 0.30 + df['vis_score'] * 0.30) * 100
+    df['ASI_Astronomy'] = (df['cloud_score'] * 0.50 + df['vis_score'] * 0.20 + df['moon_score'] * 0.20 + df['humidity_score'] * 0.10) * 100
     
-    for _, row in df.iterrows():
-        score = 100.0
+    # 3. CRITICAL PENALTY THRESHOLDS
+    def determine_aviation_status(row):
+        if row['visibility_mean'] < 4000:  # Visual Flight Rules (VFR) critical ceiling minimum
+            return 'Sub-optimal (No-Go) [Low Visibility]'
+        if row['ASI_Aviation'] >= 75.0: return 'Optimal (Go)'
+        elif row['ASI_Aviation'] >= 50.0: return 'Marginal (Caution)'
+        else: return 'Sub-optimal (No-Go)'
         
-        # Wind Penalty: Deduct points if wind exceeds 15 km/h
-        wind = float(row.get('wind_speed_10m_max', 0))
-        if wind > 15:
-            score -= (wind - 15) * 2
-            
-        # Rain Penalty: Severe deduction for precipitation
-        rain = float(row.get('precipitation_sum', 0))
-        if rain > 0:
-            score -= (rain * 15)
-            
-        # Visibility Penalty: Deduct if visibility falls below 8 km (8000m)
-        # Handle both meters and kilometers gracefully
-        vis = float(row.get('visibility_mean', 10000))
-        if vis > 150:  # Check if in meters
-            vis_km = vis / 1000.0
-        else:
-            vis_km = vis
-            
-        if vis_km < 8.0:
-            score -= (8.0 - vis_km) * 10
-            
-        # Ensure score stays between 0 and 100
-        score = max(0.0, min(100.0, score))
-        asi_aviation_list.append(score)
+    def determine_astronomy_status(row):
+        if row['visibility_mean'] < 3000 or row['cloud_cover_mean'] > 75:
+            return 'Sub-optimal (No-Go)'
+        if row['ASI_Astronomy'] >= 75.0: return 'Optimal (Go)'
+        elif row['ASI_Astronomy'] >= 50.0: return 'Marginal (Caution)'
+        else: return 'Sub-optimal (No-Go)'
         
-        # Categorize status based on score thresholds
-        if score >= 75:
-            aviation_status_list.append("Optimal Conditions")
-        elif score >= 45:
-            aviation_status_list.append("Marginal Operations")
-        else:
-            aviation_status_list.append("Suboptimal / Grounded")
-
-    df['ASI_Aviation'] = asi_aviation_list
-    df['Aviation_Status'] = aviation_status_list
-
-    # -------------------------------------------------------------
-    # 2. OBSERVATION WINDOW (ASI Astronomy Calculation)
-    # Base formula drops points primarily for cloud cover and relative humidity
-    # -------------------------------------------------------------
-    asi_astronomy_list = []
-    astronomy_status_list = []
+    df['Aviation_Status'] = df.apply(determine_aviation_status, axis=1)
+    df['Astronomy_Status'] = df.apply(determine_astronomy_status, axis=1)
     
-    for _, row in df.iterrows():
-        score = 100.0
-        
-        # Cloud Cover Penalty: Heavy penalty for astronomical sight blockage
-        clouds = float(row.get('cloud_cover_mean', 0))
-        score -= (clouds * 0.8)
-        
-        # Humidity Penalty: High moisture creates dew/lens fogging
-        humidity = float(row.get('relative_humidity_2m_mean', 0))
-        if humidity > 70:
-            score -= (humidity - 70) * 0.5
-            
-        # Rain Penalty: Zero out astronomical viewing if it's raining
-        if float(row.get('precipitation_sum', 0)) > 0:
-            score -= 40
-            
-        # Ensure score stays between 0 and 100
-        score = max(0.0, min(100.0, score))
-        asi_astronomy_list.append(score)
-        
-        # Categorize status
-        if score >= 70:
-            astronomy_status_list.append("Optimal Clear Skies")
-        elif score >= 40:
-            astronomy_status_list.append("Marginal Overcast")
-        else:
-            astronomy_status_list.append("Suboptimal / No Viewing")
-
-    df['ASI_Astronomy'] = asi_astronomy_list
-    df['Astronomy_Status'] = astronomy_status_list
-
-    return df
-
-# Simple verification routine
-if __name__ == "__main__":
-    print("Testing index calculation framework matrix...")
-    mock_data = pd.DataFrame([{
-        'date': '2026-06-27',
-        'wind_speed_10m_max': 12.0,
-        'precipitation_sum': 0.0,
-        'visibility_mean': 10000.0,
-        'cloud_cover_mean': 15.0,
-        'relative_humidity_2m_mean': 55.0,
-        'temperature_2m_max': 26.0,
-        'temperature_2m_min': 17.0,
-        'surface_pressure_mean': 850.0,
-        'sunrise': '06:01',
-        'sunset': '18:12',
-        'moon_phase': 'Waxing Gibbous'
-    }])
-    
-    result = compute_all_indices(mock_data)
-    print("Execution completely clear! Results sample:")
-    print(result[['ASI_Aviation', 'Aviation_Status', 'ASI_Astronomy', 'Astronomy_Status']])
+    columns_to_drop = ['wind_score', 'rain_score', 'vis_score', 'cloud_score', 'humidity_score', 'moon_score']
+    return df.drop(columns=columns_to_drop)
