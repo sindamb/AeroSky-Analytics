@@ -90,7 +90,7 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
         st.title("🔐 AeroSky Administrator Dashboard")
         st.subheader("Login Required")
         
-        ADMIN_PASSWORD = "sylvere"  
+        ADMIN_PASSWORD = "@inzagi"  
         password = st.text_input("Enter Admin Password", type="password")
         
         if st.button("Login"):
