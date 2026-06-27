@@ -141,7 +141,6 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
 # 4. MAIN TELEMETRY DASHBOARD VIEW
 # ==========================================
 else:
-    # Set a 60-second TTL cache for Open-Meteo API payload requests
     @st.cache_data(ttl=60, show_spinner=False)
     def fetch_and_calculate_live_metrics():
         raw_df = fetch_live_only_data()
@@ -174,83 +173,84 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-    # Render independent clock section
+    # Execute the live ticking clock header safely inside its isolated fragment
     run_live_clock_header()
 
-    # Load telemetry matrix dependencies globally into page loop
+    # ------------------------------------------
+    # CORE APPLICATION FLOW (NATIVE PIPELINE)
+    # ------------------------------------------
     try:
         df = fetch_and_calculate_live_metrics()
         today_row = df.iloc[-1]
     except Exception as e:
         st.error(f"Data engine offline: {e}")
-        st.stop()
+        today_row = None
+
+    # Render dashboard sections only if data is successfully fetched
+    if today_row is not None:
+        st.markdown('<div class="section-header">📡 Real-Time Suitability Diagnostics</div>', unsafe_allow_html=True)
+        diag_col1, diag_col2 = st.columns(2)
+        
+        av_status = today_row['Aviation_Status']
+        av_class = "status-optimal" if "Optimal" in av_status else ("status-marginal" if "Marginal" in av_status else "status-suboptimal")
+        as_status = today_row['Astronomy_Status']
+        as_class = "status-optimal" if "Optimal" in as_status else ("status-marginal" if "Marginal" in as_status else "status-suboptimal")
+
+        with diag_col1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <span style="font-size:14px; font-weight:600; color:#4B5563; text-transform:uppercase;">Flight Safety System</span>
+                    <span class="status-badge {av_class}">{av_status}</span>
+                </div>
+                <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{today_row['ASI_Aviation']:.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
+                <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; gap:15px;">
+                    <span>💨 <b>Wind:</b> {today_row['wind_speed_10m_max']} km/h</span>
+                    <span>🌧️ <b>Rain:</b> {today_row['precipitation_sum']} mm</span>
+                    <span>👁️ <b>Range:</b> {today_row['visibility_mean']/1000.0:.1f} km</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with diag_col2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <span style="font-size:14px; font-weight:600; color:#4B5563; text-transform:uppercase;">Observation Window</span>
+                    <span class="status-badge {as_class}">{as_status}</span>
+                </div>
+                <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{today_row['ASI_Astronomy']:.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
+                <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; gap:12px; justify-content:space-between;">
+                    <span>☁️ <b>Clouds:</b> {today_row['cloud_cover_mean']}%</span>
+                    <span>🌖 <b>Moon:</b> {today_row['moon_phase']}</span>
+                    <span>💧 <b>Humidity:</b> {today_row['relative_humidity_2m_mean']}%</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('<div class="section-header">🌤️ Live Kigali Environmental Conditions Matrix</div>', unsafe_allow_html=True)
+        w_col1, w_col2, w_col3, w_col4, w_col5 = st.columns(5)
+        with w_col1:
+            st.metric(label="Temperature Profile", value=f"{today_row['temperature_2m_max']} °C", delta=f"Floor: {today_row['temperature_2m_min']} °C", delta_color="inverse")
+        with w_col2:
+            st.metric(label="Relative Air Humidity", value=f"{today_row['relative_humidity_2m_mean']}%")
+        with w_col3:
+            st.metric(label="Kigali QFE (KIA) ", value=f"{today_row['surface_pressure_mean']:.1f} hPa")
+        with w_col4:
+            vis_km = today_row['visibility_mean'] / 1000.0 if today_row['visibility_mean'] > 100 else today_row['visibility_mean']
+            st.metric(label="Horizontal Visibility", value=f"{vis_km:.1f} km")
+        with w_col5:
+            st.metric(label="Solar Window Range", value=f"🌅 {today_row['sunrise']}", delta=f"🌇 Sunset: {today_row['sunset']}", delta_color="off")
+
+        st.markdown('<div class="section-header">🔍 Current Frame Log Registry</div>', unsafe_allow_html=True)
+        columns_to_show = [
+            'date', 'ASI_Aviation', 'Aviation_Status', 'ASI_Astronomy', 'Astronomy_Status',
+            'precipitation_sum', 'wind_speed_10m_max', 'cloud_cover_mean', 'relative_humidity_2m_mean', 'visibility_mean', 'moon_phase'
+        ]
+        st.dataframe(df[columns_to_show], use_container_width=True, hide_index=True)
 
     # ------------------------------------------
-    # DASHBOARD MONITOR LAYOUT UNITS
-    # ------------------------------------------
-    st.markdown('<div class="section-header">📡 Real-Time Suitability Diagnostics</div>', unsafe_allow_html=True)
-    diag_col1, diag_col2 = st.columns(2)
-    
-    av_status = today_row['Aviation_Status']
-    av_class = "status-optimal" if "Optimal" in av_status else ("status-marginal" if "Marginal" in av_status else "status-suboptimal")
-    as_status = today_row['Astronomy_Status']
-    as_class = "status-optimal" if "Optimal" in as_status else ("status-marginal" if "Marginal" in as_status else "status-suboptimal")
-
-    with diag_col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <span style="font-size:14px; font-weight:600; color:#4B5563; text-transform:uppercase;">Flight Safety System</span>
-                <span class="status-badge {av_class}">{av_status}</span>
-            </div>
-            <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{today_row['ASI_Aviation']:.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
-            <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; gap:15px;">
-                <span>💨 <b>Wind:</b> {today_row['wind_speed_10m_max']} km/h</span>
-                <span>🌧️ <b>Rain:</b> {today_row['precipitation_sum']} mm</span>
-                <span>👁️ <b>Range:</b> {today_row['visibility_mean']/1000.0:.1f} km</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with diag_col2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <span style="font-size:14px; font-weight:600; color:#4B5563; text-transform:uppercase;">Observation Window</span>
-                <span class="status-badge {as_class}">{as_status}</span>
-            </div>
-            <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{today_row['ASI_Astronomy']:.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
-            <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; gap:12px; justify-content:space-between;">
-                <span>☁️ <b>Clouds:</b> {today_row['cloud_cover_mean']}%</span>
-                <span>🌖 <b>Moon:</b> {today_row['moon_phase']}</span>
-                <span>💧 <b>Humidity:</b> {today_row['relative_humidity_2m_mean']}%</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown('<div class="section-header">🌤️ Live Kigali Environmental Conditions Matrix</div>', unsafe_allow_html=True)
-    w_col1, w_col2, w_col3, w_col4, w_col5 = st.columns(5)
-    with w_col1:
-        st.metric(label="Temperature Profile", value=f"{today_row['temperature_2m_max']} °C", delta=f"Floor: {today_row['temperature_2m_min']} °C", delta_color="inverse")
-    with w_col2:
-        st.metric(label="Relative Air Humidity", value=f"{today_row['relative_humidity_2m_mean']}%")
-    with w_col3:
-        st.metric(label="Kigali QFE (KIA) ", value=f"{today_row['surface_pressure_mean']:.1f} hPa")
-    with w_col4:
-        vis_km = today_row['visibility_mean'] / 1000.0 if today_row['visibility_mean'] > 100 else today_row['visibility_mean']
-        st.metric(label="Horizontal Visibility", value=f"{vis_km:.1f} km")
-    with w_col5:
-        st.metric(label="Solar Window Range", value=f"🌅 {today_row['sunrise']}", delta=f"🌇 Sunset: {today_row['sunset']}", delta_color="off")
-
-    st.markdown('<div class="section-header">🔍 Current Frame Log Registry</div>', unsafe_allow_html=True)
-    columns_to_show = [
-        'date', 'ASI_Aviation', 'Aviation_Status', 'ASI_Astronomy', 'Astronomy_Status',
-        'precipitation_sum', 'wind_speed_10m_max', 'cloud_cover_mean', 'relative_humidity_2m_mean', 'visibility_mean', 'moon_phase'
-    ]
-    st.dataframe(df[columns_to_show], use_container_width=True, hide_index=True)
-
-    # ------------------------------------------
-    # CORE SYSTEM DETAILS & OPERATIONAL LINKS
+    # CORE SYSTEM DETAILS & BACKEND LINKS
     # ------------------------------------------
     st.markdown("---")
     st.markdown('<div class="section-header">📘 AeroSky Core System Details</div>', unsafe_allow_html=True)
@@ -265,7 +265,7 @@ else:
         """)
 
     # ------------------------------------------
-    # SYSTEM OPERATOR SUGGESTION BOX (NATIVE FLOW)
+    # NATIVE SYSTEM OPERATOR SUGGESTION BOX
     # ------------------------------------------
     st.markdown('<div class="section-header">📩 System Operator Suggestion Box</div>', unsafe_allow_html=True)
     with st.form("suggestion_box_stable_form", clear_on_submit=True):
@@ -284,7 +284,7 @@ else:
             else:
                 st.warning("Please input message content before transmitting.")
 
-    # Shared Footer element
+    # Global Base Page Footer
     st.markdown(
         "<hr><p style='text-align: center; color: #6B7280; font-size: 13px; font-weight: 500; letter-spacing: 0.025em;'>"
         "⚡ Designed & Built by <b>Sindambiwe Sylvere</b> | AeroSky Telemetry Core © 2026"
