@@ -70,7 +70,6 @@ if "authenticated" not in st.session_state:
 st.sidebar.title("Navigation")
 app_mode = st.sidebar.radio("Go to", ["Live Telemetry Dashboard", "Admin Login"])
 
-# Provide an explicit manual override in the sidebar to escape API hangs
 st.sidebar.markdown("---")
 st.sidebar.subheader("Data Stream Controls")
 use_mock_data = st.sidebar.checkbox("Force Safe Mock Data (Bypass API)", value=not BACKEND_AVAILABLE)
@@ -135,13 +134,12 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
 # 4. MAIN TELEMETRY DASHBOARD VIEW
 # ==========================================
 else:
-    # Safe embedded mock function that can NEVER hang
     def generate_fallback_mock_data():
         mock_df = pd.DataFrame([{
             'date': datetime.now(ZoneInfo("Africa/Kigali")).strftime('%Y-%m-%d'),
             'wind_speed_10m_max': 12.4,
             'precipitation_sum': 0.0,
-            'visibility_mean': 11200.0,
+            'visibility_mean': 11.2,
             'cloud_cover_mean': 18.0,
             'relative_humidity_2m_mean': 62.0,
             'temperature_2m_max': 27.5,
@@ -184,7 +182,7 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-    # 1. Render Clock Frame Instantly
+    # 1. Render Clock
     run_live_clock_header()
 
     # 2. Setup Layout Structural Elements
@@ -202,11 +200,10 @@ else:
         if use_mock_data:
             df = generate_fallback_mock_data()
             today_row = df.iloc[-1]
-            st.info("ℹ️ Running on isolated Local Safe Telemetry Data Stream.")
+            st.info("ℹ— Running on isolated Local Safe Telemetry Data Stream.")
         else:
             with st.status("Connecting to Live API Telemetry Stream...", expanded=False) as status:
                 try:
-                    # Direct processing to prevent caching thread gridlocks
                     raw_df = fetch_live_only_data()
                     df = compute_all_indices(raw_df)
                     today_row = df.iloc[-1]
@@ -225,6 +222,10 @@ else:
             as_status = today_row['Astronomy_Status']
             as_class = "status-optimal" if "Optimal" in as_status else ("status-marginal" if "Marginal" in as_status else "status-suboptimal")
 
+            # Format visibility to KM for structural metric presentation
+            raw_vis = float(today_row.get('visibility_mean', 10000.0))
+            vis_km = raw_vis / 1000.0 if raw_vis > 150.0 else raw_vis
+
             with diag_col1:
                 st.markdown(f"""
                 <div class="metric-card">
@@ -232,11 +233,11 @@ else:
                         <span style="font-size:14px; font-weight:600; color:#4B5563; text-transform:uppercase;">Flight Safety System</span>
                         <span class="status-badge {av_class}">{av_status}</span>
                     </div>
-                    <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{today_row['ASI_Aviation']:.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
+                    <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{float(today_row['ASI_Aviation']):.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
                     <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; gap:15px;">
-                        <span>💨 <b>Wind:</b> {today_row['wind_speed_10m_max']} km/h</span>
-                        <span>🌧️ <b>Rain:</b> {today_row['precipitation_sum']} mm</span>
-                        <span>👁️ <b>Range:</b> {today_row['visibility_mean']/1000.0:.1f} km</span>
+                        <span>💨 <b>Wind:</b> {float(today_row['wind_speed_10m_max']):.1f} km/h</span>
+                        <span>🌧️ <b>Rain:</b> {float(today_row['precipitation_sum']):.1f} mm</span>
+                        <span>👁️ <b>Range:</b> {vis_km:.1f} km</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -248,11 +249,11 @@ else:
                         <span style="font-size:14px; font-weight:600; color:#4B5563; text-transform:uppercase;">Observation Window</span>
                         <span class="status-badge {as_class}">{as_status}</span>
                     </div>
-                    <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{today_row['ASI_Astronomy']:.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
+                    <h2 style="margin:0; font-size:36px; font-weight:700; color:#111827;">{float(today_row['ASI_Astronomy']):.1f} <span style="font-size:16px; color:#6B7280;">/ 100 ASI</span></h2>
                     <div style="margin-top:14px; font-size:13px; color:#4B5563; border-top:1px solid #F3F4F6; padding-top:10px; display:flex; gap:12px; justify-content:space-between;">
-                        <span>☁️ <b>Clouds:</b> {today_row['cloud_cover_mean']}%</span>
+                        <span>☁️ <b>Clouds:</b> {float(today_row['cloud_cover_mean']):.1f}%</span>
                         <span>🌖 <b>Moon:</b> {today_row['moon_phase']}</span>
-                        <span>💧 <b>Humidity:</b> {today_row['relative_humidity_2m_mean']}%</span>
+                        <span>💧 <b>Humidity:</b> {float(today_row['relative_humidity_2m_mean']):.1f}%</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -260,13 +261,12 @@ else:
             st.markdown('<div class="section-header">🌤️ Live Kigali Environmental Conditions Matrix</div>', unsafe_allow_html=True)
             w_col1, w_col2, w_col3, w_col4, w_col5 = st.columns(5)
             with w_col1:
-                st.metric(label="Temperature Profile", value=f"{today_row['temperature_2m_max']} °C", delta=f"Floor: {today_row['temperature_2m_min']} °C", delta_color="inverse")
+                st.metric(label="Temperature Profile", value=f"{float(today_row['temperature_2m_max']):.1f} °C", delta=f"Floor: {float(today_row['temperature_2m_min']):.1f} °C", delta_color="inverse")
             with w_col2:
-                st.metric(label="Relative Air Humidity", value=f"{today_row['relative_humidity_2m_mean']}%")
+                st.metric(label="Relative Air Humidity", value=f"{float(today_row['relative_humidity_2m_mean']):.1f}%")
             with w_col3:
-                st.metric(label="Kigali QFE (KIA) ", value=f"{today_row['surface_pressure_mean']:.1f} hPa")
+                st.metric(label="Kigali QFE (KIA) ", value=f"{float(today_row['surface_pressure_mean']):.1f} hPa")
             with w_col4:
-                vis_km = today_row['visibility_mean'] / 1000.0 if today_row['visibility_mean'] > 100 else today_row['visibility_mean']
                 st.metric(label="Horizontal Visibility", value=f"{vis_km:.1f} km")
             with w_col5:
                 st.metric(label="Solar Window Range", value=f"🌅 {today_row['sunrise']}", delta=f"🌇 Sunset: {today_row['sunset']}", delta_color="off")
@@ -276,10 +276,28 @@ else:
                 'date', 'ASI_Aviation', 'Aviation_Status', 'ASI_Astronomy', 'Astronomy_Status',
                 'precipitation_sum', 'wind_speed_10m_max', 'cloud_cover_mean', 'relative_humidity_2m_mean', 'visibility_mean', 'moon_phase'
             ]
-            st.dataframe(df[columns_to_show], use_container_width=True, hide_index=True)
+            
+            # Formats the visibility inside the DataFrame to uniform KM for visual clarity
+            df_display = df.copy()
+            df_display['visibility_mean'] = df_display['visibility_mean'].apply(lambda x: x / 1000.0 if x > 150.0 else x)
+
+            st.dataframe(
+                df_display[columns_to_show], 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "ASI_Aviation": st.column_config.NumberColumn(format="%.1f"),
+                    "ASI_Astronomy": st.column_config.NumberColumn(format="%.1f"),
+                    "precipitation_sum": st.column_config.NumberColumn(format="%.1f"),
+                    "wind_speed_10m_max": st.column_config.NumberColumn(format="%.1f"),
+                    "cloud_cover_mean": st.column_config.NumberColumn(format="%.1f"),
+                    "relative_humidity_2m_mean": st.column_config.NumberColumn(format="%.1f"),
+                    "visibility_mean": st.column_config.NumberColumn(label="visibility_mean (km)", format="%.1f")
+                }
+            )
 
     # ------------------------------------------
-    # 4. CORE SYSTEM DETAILS & BACKEND LINKS (Always Renders)
+    # 4. CORE SYSTEM DETAILS & BACKEND LINKS (Protected)
     # ------------------------------------------
     with details_section:
         st.markdown("---")
@@ -295,7 +313,7 @@ else:
             """)
 
     # ------------------------------------------
-    # 5. SYSTEM OPERATOR SUGGESTION BOX (Always Renders)
+    # 5. SYSTEM OPERATOR SUGGESTION BOX (Protected)
     # ------------------------------------------
     with suggestion_section:
         st.markdown('<div class="section-header">📩 System Operator Suggestion Box</div>', unsafe_allow_html=True)
@@ -317,7 +335,7 @@ else:
             elif submitted:
                 st.error("Suggestion storage link is offline.")
 
-    # Global base page footer layout configuration
+    # Base Page Footer
     st.markdown(
         "<hr><p style='text-align: center; color: #6B7280; font-size: 13px; font-weight: 500; letter-spacing: 0.025em;'>"
         "⚡ Designed & Built by <b>Sindambiwe Sylvere</b> | AeroSky Telemetry Core © 2026"
