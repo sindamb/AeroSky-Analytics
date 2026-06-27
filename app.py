@@ -152,8 +152,10 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
 else:
     # Setup placeholders for the live dashboard
     header_placeholder = st.empty()
-    diagnostic_container = st.container()
-    matrix_container = st.container()
+    
+    # FIXED: Swapped these layout objects to st.empty() blocks to prevent multiple accumulation bugs
+    diagnostic_placeholder = st.empty()
+    matrix_placeholder = st.empty()
     table_placeholder = st.empty()
 
     details_and_links_container = st.container()
@@ -165,7 +167,7 @@ else:
         raw_df = fetch_live_only_data()
         return compute_all_indices(raw_df)
 
-    # FIXED: Isolated Live Auto-refresh fragment via run_every parameter
+    # Isolated Live Auto-refresh fragment via run_every parameter
     @st.fragment(run_every=1.0)
     def run_live_telemetry_loop():
         kigali_time = datetime.now(ZoneInfo("Africa/Kigali"))
@@ -204,7 +206,8 @@ else:
             st.error(f"Data engine offline: {e}")
             return
 
-        with diagnostic_container:
+        # FIXED: Wrap dynamic content blocks neatly into an inner container inside the empty placeholder
+        with diagnostic_placeholder.container():
             st.markdown('<div class="section-header">📡 Real-Time Suitability Diagnostics</div>', unsafe_allow_html=True)
             diag_col1, diag_col2 = st.columns(2)
             
@@ -245,7 +248,8 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
-        with matrix_container:
+        # FIXED: Clear out and replace the previous execution matrix
+        with matrix_placeholder.container():
             st.markdown('<div class="section-header">🌤️ Live Kigali Environmental Conditions Matrix</div>', unsafe_allow_html=True)
             w_col1, w_col2, w_col3, w_col4, w_col5 = st.columns(5)
             with w_col1:
@@ -260,15 +264,14 @@ else:
             with w_col5:
                 st.metric(label="Solar Window Range", value=f"🌅 {today_row['sunrise']}", delta=f"🌇 Sunset: {today_row['sunset']}", delta_color="off")
 
-        with table_placeholder:
+        # FIXED: Clear out and replace the previous data table frame
+        with table_placeholder.container():
             st.markdown('<div class="section-header">🔍 Current Frame Log Registry</div>', unsafe_allow_html=True)
             columns_to_show = [
                 'date', 'ASI_Aviation', 'Aviation_Status', 'ASI_Astronomy', 'Astronomy_Status',
                 'precipitation_sum', 'wind_speed_10m_max', 'cloud_cover_mean', 'relative_humidity_2m_mean', 'visibility_mean', 'moon_phase'
             ]
             st.dataframe(df[columns_to_show], width='stretch', hide_index=True)
-
-        # REMOVED script blocks: time.sleep(1) and st.rerun() are handled natively by st.fragment now.
 
     # Static elements stay rock solid here outside the fragment's loop scope
     with details_and_links_container:
