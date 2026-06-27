@@ -141,7 +141,7 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
 # 4. MAIN TELEMETRY DASHBOARD VIEW
 # ==========================================
 else:
-    @st.cache_data(ttl=60)
+    @st.cache_data(ttl=60, show_spinner=False)
     def fetch_and_calculate_live_metrics():
         raw_df = fetch_live_only_data()
         return compute_all_indices(raw_df)
@@ -175,9 +175,10 @@ else:
         """, unsafe_allow_html=True)
 
     # ------------------------------------------
-    # FRAGMENT 2: Network Telemetry Polling (Every 60 Seconds)
+    # FRAGMENT 2: Non-blocking Network Telemetry Polling
+    # parallel=True pushes this execution to a worker thread pool.
     # ------------------------------------------
-    @st.fragment(run_every=60.0)
+    @st.fragment(run_every=60.0, parallel=True)
     def run_live_telemetry_loop():
         diagnostic_container = st.container()
         matrix_container = st.container()
@@ -254,11 +255,11 @@ else:
             ]
             st.dataframe(df[columns_to_show], width='stretch', hide_index=True)
 
-    # FIXED LAYOUT SEQUENCING: Execute live layout calculations sequentially at the top
+    # UI Rendering Order
     run_live_clock_header()
     run_live_telemetry_loop()
 
-    # The form sections and expansion layouts now reside securely back down at the baseline interface scope
+    # Bottom Static Content Placement
     details_and_links_container = st.container()
     suggestion_box_container = st.container()
     developer_footer_placeholder = st.empty()
