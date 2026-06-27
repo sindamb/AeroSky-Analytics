@@ -165,8 +165,8 @@ else:
         raw_df = fetch_live_only_data()
         return compute_all_indices(raw_df)
 
-    # Isolated Live Auto-refresh fragment
-    @st.fragment
+    # FIXED: Isolated Live Auto-refresh fragment via run_every parameter
+    @st.fragment(run_every=1.0)
     def run_live_telemetry_loop():
         kigali_time = datetime.now(ZoneInfo("Africa/Kigali"))
         formatted_date = kigali_time.strftime('%A, %B %d, %Y')
@@ -268,8 +268,7 @@ else:
             ]
             st.dataframe(df[columns_to_show], width='stretch', hide_index=True)
 
-        time.sleep(1)
-        st.rerun()
+        # REMOVED script blocks: time.sleep(1) and st.rerun() are handled natively by st.fragment now.
 
     # Static elements stay rock solid here outside the fragment's loop scope
     with details_and_links_container:
