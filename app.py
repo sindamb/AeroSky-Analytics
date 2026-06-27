@@ -14,7 +14,7 @@ from Indices import compute_all_indices
 # 1. GLOBAL PAGE CONFIGURATION & THEME INJECTION
 # ==========================================
 st.set_page_config(
-    page_title="AeroSky Premium Analytics — Kigali Station",
+    page_title="AeroSky Analytics — Kigali Station",
     page_icon="✈️",
     layout="wide"
 )
@@ -78,7 +78,7 @@ if app_mode == "Admin Login" or st.session_state.authenticated:
         st.title("🔐 AeroSky Administrator Dashboard")
         st.subheader("Login Required")
         
-        ADMIN_PASSWORD = "AeroSky2026"  
+        ADMIN_PASSWORD = "sylvere"  
         password = st.text_input("Enter Admin Password", type="password")
         
         if st.button("Login"):
@@ -177,7 +177,7 @@ else:
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
                 <div>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <h1 style="margin:0; font-size:32px; font-weight:700; color:#FFFFFF;">AeroSky Live Station Tracker</h1>
+                        <h1 style="margin:0; font-size:32px; font-weight:700; color:#FFFFFF;">AeroSky Analytics</h1>
                         <span style="background: rgba(255, 255, 255, 0.15); font-size: 11px; padding: 4px 8px; border-radius: 4px; font-weight: 600;">KGL</span>
                     </div>
                     <p style="margin:4px 0 0 0; font-size:14px; color:#93C5FD;">📍 Station: <b>Kigali, Rwanda</b></p>
