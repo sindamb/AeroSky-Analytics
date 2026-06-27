@@ -81,3 +81,16 @@ def delete_suggestion(suggestion_id):
 
     conn.commit()
     conn.close()
+
+
+def get_global_mock_status():
+    """Reads if the system is forced into mock data globally."""
+    if not os.path.exists("stream_status.txt"):
+        return False
+    with open("stream_status.txt", "r") as f:
+        return f.read().strip() == "True"
+
+def set_global_mock_status(status: bool):
+    """Sets the global data stream status."""
+    with open("stream_status.txt", "w") as f:
+        f.write(str(status))
